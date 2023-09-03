@@ -299,11 +299,3 @@ class Usadka1D_circl:
             vtkoutput.SetInputData(mesh)
             vtkoutput.SetFileName(VTKFile)
             vtkoutput.Write()
-#---------------------
-#----------Example-----------
-model=Usadka1D_circl()
-model.CalcBcProp(25.0,2500)
-model.CalcMatProp(C=0.1, Mn=0.9)
-model.RunCalc(n=100,CSVFile='Results.csv')
-print('Average Heat Flux, W/cm2:')
-print(str((model.Twat-model.Twat_in)/0.705/2/pi*(4230000-3656.2*model.Twat-25.85*model.Twat**2)/60000*model.Qwat/model.R/10000))
