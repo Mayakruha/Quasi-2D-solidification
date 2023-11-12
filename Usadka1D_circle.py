@@ -10,40 +10,41 @@ sys.path.append('C:\\Program Files\\ParaView 5.11.1\\bin\\Lib\\site-packages')
 import vtk
 class Usadka1D_circl:
     #---------- casting parameters---------------------------
-    R=0.1828/2      #radius of biller cross section, m    
-    v=3.         #casting speed, m/min
-    dTemp=15       #temperature of overheating for liquid steel, K
+    R=0.200/2     #radius of biller cross section, m    
+    v=1.5           #casting speed, m/min
+    dTemp=20       #temperature of overheating for liquid steel, K
     Tsr=15         #ambient temperature, Celsius
     MouldLevel=0.1 #mould level,m
     #---------- heat exchange parameters
-    alfa_liq=20000  #htc for a border between solid and liquid steel, W/m2K
-    lamda_liq=500   #conductivity in the area of luquid steel, W/m*K
-    Zones=[[0.9,200.0],[0.925,100]] #(start of zone, m; water flux, l/m2*min)
+    alfa_liq=2200  #htc for a border between solid and liquid steel, W/m2K
+    lamda_liq=190  #conductivity in the area of luquid steel, W/m*K
+    Zones=[[0.85,200.0],[0.925,100]] #(start of zone, m; water flux, l/m2*min)
     #---------- Output---------------------------
-    Z_list=[0.1,0.15,0.2,0.3,0.4,0.5,0.6,0.65,0.705]
-    Value_tst=[]      #list of test variables
-    ValieName_tst=[]  #list of names for test variables 
+    Z_list=[0.1,0.15,0.25,0.3,0.35,0.4,0.45,0.5,0.55,0.6,0.65,0.7,0.75,0.801]
+    Value_tst=[]     #list of test variables
+    ValieName_tst=[] #list of names for test variables 
     #---------- mould parameters---------------------------
-    Wat_thick=0.005       #thickness of water layer, m
-    Mould_lamda=370       #mould material conductivity, W/mK
-    Mould_thick=0.012      #distance between water and mould surface, m
-    Coat_lamda=80         #coating conductivity, W/mK
-    Coat_thick0=0.0       #top thickness of coating, m
-    Coat_thick1=0.0       #bottom thickness of coating, m
-    Tflux_melt=1400       #melting temperature for mould flux, C
-    alfa_flux_max=1800    #maximum HTC for flux, W/m2*K
-    Rate_flux_drop=0.8 #coefficeint of HTC drop
-    Rate_flux_melt=0.05  #coefficient of htan() defining temp range of melting
-    Press_coeff=0.023 #coefficient of contact conductence
+    Wat_thick=0.0035     #thickness of water layer, m
+    Mould_lamda=370     #mould material conductivity, W/mK
+    Mould_thick=0.012   #distance between water and mould surface, m
+    Coat_lamda=80       #coating conductivity, W/mK
+    Coat_thick0=0.0     #top thickness of coating, m
+    Coat_thick1=0.0     #bottom thickness of coating, m
+    Tflux_melt=1130     #melting temperature for mould flux, C
+    alfa_flux_max=1700  #maximum HTC for flux, W/m2*K
+    Rate_flux_drop=0.95  #coefficeint of HTC drop
+    Rate_flux_melt=0.05 #coefficient of htan() defining temp range of melting
+    Press_coeff=0.02   #coefficient of contact conductence
     #-----------steel properties----------------------
-    lamda=29 #steel conductivity, W/m*K    
-    L=272E+3 #heat of solidification, J/kg
-    ro=7200  #steel density, kg/m3 
-    Cl=500   #heat capacity for liquid steel, J/kg*K
-    Cr=680   #heat capacity for solid steel, J/kg*K
-    k=0.1454 #power for strain rate in the steel creep equation
-    Tc=266   #thermal coefficient in the steel creep equation, K
-    Ac=11348 #coefficient for stress in the steel creep equation, MPa
+    lamda=29    #steel conductivity, W/m*K    
+    L=272E+3    #heat of solidification, J/kg
+    ro_sol=7300 #solid steel density, kg/m3
+    ro_liq=7000 #liquid steel density, kg/m3
+    Cl=795      #heat capacity for liquid steel, J/kg*K
+    Cr=687      #heat capacity for solid steel, J/kg*K
+    k=0.1413    #power for strain rate in the steel creep equation
+    Tc=275      #thermal coefficient in the steel creep equation, K
+    Ac=14546    #coefficient for stress in the steel creep equation, MPa
     #-----------variables for calculation
     def Prandtl(self,Temp):
         return 12*exp(-0.036*Temp)+1.336343
@@ -52,7 +53,7 @@ class Usadka1D_circl:
         self.Tsol=1536-(200*C+16*Si+6*Mn+1.7*Cr+3.9*Ni+93*P+1100*S)                  #Solidus temperatere, Celsius
         self.Tlik=1536-(78*C+7.6*Si+4.9*Mn+1.3*Cr+3.1*Ni+4.7*Cu+3.6*Al+34.4*P+38*S)  #Liquidus temperature, Celsius
         self.beta=(2.7-0.16*C+0.039*Mn-0.1*Si-0.019*Cr-0.016*Ni-0.5*P-0.25*S)/140000 #Thermal expansion coeff, 1/K
-        self.Hl=self.ro*((self.Cl+self.Cr)*(self.Tlik-self.Tsol)/2+self.L)           #J/m3
+        self.Hl=(self.ro_liq*self.Cl+self.ro_sol*self.Cr)*(self.Tlik-self.Tsol)/2+(self.ro_liq+self.ro_sol)*self.L/2           #J/m3
         print('***Thermal Properties of steel:')
         print('Solidus temperature, Celsius: '+str(self.Tsol))
         print('Liquidus temperature, Celsius: '+str(self.Tlik))
@@ -79,7 +80,7 @@ class Usadka1D_circl:
     def HeatFlow(self,z,Ts):#W/m2
         if z<=self.Zones[0][0]:
             self.alfa_flux=self.v**0.8*(self.alfa_flux_max*(1-self.Rate_flux_drop/2*(1-tanh(self.Rate_flux_melt*(Ts-self.Tflux_melt))))+\
-                self.Press_coeff*self.ro*9.81*(z-self.MouldLevel))
+                self.Press_coeff*self.ro_liq*9.81*(z-self.MouldLevel))
             Coat_thick=self.Coat_thick0+(self.Coat_thick1-self.Coat_thick0)*z/self.Zones[0][0]
             self.alfa_wat=self.alfa_wat0*(1+self.Wat_thick/z)
             Q=(Ts-self.Twat)/self.R/(1/self.alfa_wat/(self.R+self.Mould_thick+Coat_thick)+\
@@ -101,20 +102,13 @@ class Usadka1D_circl:
         elif Temp>self.Tlik: return self.Cl
         else: return (self.L+self.Cr*(self.Tlik-Temp)+self.Cl*(Temp-self.Tsol))/(self.Tlik-self.Tsol)
     def FuncTemp(self,Value): #J/m3
-        if Value<self.Tsol: return (Value-self.Tsol)*self.ro*self.Cr
-        elif Value>self.Tlik: return (Value-self.Tlik)*self.ro*self.Cl+self.Hl
-        else: return self.ro*(Value-self.Tsol)/(self.Tlik-self.Tsol)*(self.L+(self.Tlik-self.Tsol)*self.Cr+(self.Cl-self.Cr)*(Value-self.Tsol)/2)
+        if Value<self.Tsol: return (Value-self.Tsol)*self.ro_sol*self.Cr
+        elif Value>self.Tlik: return (Value-self.Tlik)*self.ro_liq*self.Cl+self.Hl
+        else: return (Value-self.Tsol)/(self.Tlik-self.Tsol)*self.Hl
     def Temperature(self,Value):
-        if Value<0: return Value/self.ro/self.Cr+self.Tsol
-        elif Value>self.Hl: return (Value-self.Hl)/self.ro/self.Cl+self.Tlik
-        else:
-            Tk=Value/self.Hl*(self.Tlik-self.Tsol)+self.Tsol
-            eps=10*self.Epsilon
-            while eps>self.Epsilon:
-                dH=Value-self.FuncTemp(Tk)
-                eps=abs(dH/self.Hl)
-                Tk=dH/self.ro/self.Cef(Tk)+Tk
-            return Tk
+        if Value<0: return Value/self.ro_sol/self.Cr+self.Tsol
+        elif Value>self.Hl: return (Value-self.Hl)/self.ro_liq/self.Cl+self.Tlik
+        else: return self.Tsol+(self.Tlik-self.Tsol)*Value/self.Hl
 #-----------functions for shrinkage calculation
     def FindKsiC(self,j,i0,SpUs0,KsiZ0):
         ksi=[2*self.beta*self.SpT[j][i0]-KsiZ0/2-(KsiZ0*self.R*self.R/2+SpUs0*self.R)/i0/i0/self.dr/self.dr,\
@@ -172,7 +166,7 @@ class Usadka1D_circl:
     def RunCalc(self,n=100,kj=0.5,Epsilon=0.0, CSVFile='', VTKFile='', Stiff=None):        
         self.n=n
         self.dr=self.R/n
-        dtau=kj*self.dr*self.dr*self.ro*min(self.Cl,self.Cr)/4/max(self.lamda,self.lamda_liq)  #sek
+        dtau=kj*self.dr*self.dr*min(self.ro_liq*self.Cl,self.ro_sol*self.Cr)/4/max(self.lamda,self.lamda_liq)  #sek
         dZ=self.v*dtau/60   #m
         if CSVFile!='':
             f_csv=open(CSVFile,'w')
@@ -231,7 +225,7 @@ class Usadka1D_circl:
             if self.Z_list[out_i]-dZ/2<=Z<self.Z_list[out_i]+dZ/2:
                 print(' {:6.3f}| {:6.1f} |  {:7.2f} | {:4.1f} |    {:5.1f}   |'.format(Z,self.T[j][n],Q/1000,self.Twat,DeltaF1*1000))
                 if CSVFile!='':
-                    #Axis, m; Shrinkage, mm; Surface Temperature, Celcius; Heat Flux, MVt/m2; Solid thickness,mm;
+                    #Axis, m; deltaR, mm; Surface Temperature, Celcius; Heat Flux, MVt/m2; Solid thickness,mm;
                     f_csv.write(str(Z)+';'+str(deltaR)+';'+str(self.T[j][n])+';'+str(Q/1000000)+';'+str(DeltaF0*1000)+';')
                     #Liquid thickness, mm; Water temperature, Celsius; HTC water, kW/m2K
                     f_csv.write(str(DeltaF1*1000)+';'+str(self.Twat)+';'+str(self.alfa_wat/1000)+';'+str(self.alfa_flux)+'\n')
