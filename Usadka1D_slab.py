@@ -1,28 +1,107 @@
 from math import exp
 #Steps for a calculation:
+#-Create mould object
 #-Set casting parameters
 #-CalcMaterilaProp(C=0.0,....)
 #-Set list for ouptut
 #-RunCalc()
+def Coating(z):# coating thickness, m
+    return 0.0005+0.001*z/0.8
+class Mould:
+    def __init__(self,Height,Nch,Sch,Pch,Mould_thick,Thick,CoatFunc):
+        #Nch - number of cooling channels
+        #Sch - cross section of a cooling channel, m2
+        #Pch - perimeter of a cooling channel, m
+        self.Height=Height           # Mould height, m
+        self.Twat_in=15              # Temperature of water [Celsius]
+        self.Qwat=0                  # Water flow [l/min]
+        self.Coat_lamda=80           # coating conductivity, W/mK
+        self.Mould_lamda=370         # mould material conductivity, W/mK
+        self.Taper=0.0005            # taper of a side over height, m
+        self.Mould_thick=Mould_thick # distance between water and mould surface, m
+        self.Thb=Thick               # size for calculation of shrinkage
+        self.deff=4*Sch/Pch          # effective diameter, m
+        self.Wat_sec=Nch*Sch
+        self.CoatFunc=CoatFunc
+        self.flux_Tmelt=1115         # melting temperature for mould flux, C
+        self.flux_Tliq=1145          # melting temperature for mould flux, C
+        self.flux_lamda=1.5          # flux conductivity, W/mK
+        self.flux_alfa_liq=5900      # HTC for luquid flux, W/m2*K
+        self.flux_alfa_sol=1200      # HTC for solid flux, W/m2*K
+        self.Zm=0
+    def flux_alfa(self,T):
+        if T>self.flux_Tliq: return self.flux_alfa_liq
+        elif T<self.flux_Tmelt: return self.flux_alfa_sol
+        else: return (T-self.flux_Tmelt)/(self.flux_Tliq-self.flux_Tmelt)*(self.flux_alfa_liq-self.flux_alfa_sol)+self.flux_alfa_sol
+    def set_level(self,z):
+        self.Coat_thick=self.CoatFunc(z)
+        self.Rm=self.Mould_thick/self.Mould_lamda+self.Coat_thick/self.Coat_lamda
+        self.z=z
+        self.alfa_watz=self.alfa_wat0*(1+self.deff/z/2)
+        if self.z>self.Zm:
+            self.shrink=self.Thb*0.0085*(z-self.Zm)**0.5
+    def mould_shape(self,z):#m
+        return self.Taper*z/self.Height
+    def HeatFlow(self,z,Ts):#W/m2
+        if self.z==self.Zm:
+            if Ts<=self.Tsol:
+                self.flux_thickz=self.flux_thick_m
+            else:
+                self.flux_thickz=self.flux_thick_m*(1+2*(Ts-self.Tsol)/self.Tsol)
+        elif self.z>self.Zm:
+            self.flux_thickz=self.flux_thick_m+self.shrink-self.mould_shape(self.z)+self.mould_shape(self.Zm)
+            if self.flux_thickz<0.0:self.flux_thickz=0.0
+        Q=(Ts-self.Twat)/(1/self.alfa_watz+self.Rm+self.flux_thickz/self.flux_lamda+1/self.flux_alfa(Ts)/self.v**0.8)
+        self.TempW=self.Twat+Q/self.alfa_watz
+        self.alfa_wat=self.alfa_watz*(self.Prandtl(self.Twat_in)/self.Prandtl(self.TempW))**0.25
+        return (Ts-self.Twat)/(1/self.alfa_wat+self.Rm+self.flux_thickz/self.flux_lamda+1/self.flux_alfa(Ts)/self.v**0.8) #mould 
+    def Prandtl(self,Temp):
+        return 12*exp(-0.036*Temp)+1.336343
+    # q - heat flux, W
+    def HeatUp(self,q):
+        self.Twat+=q/self.Qwat*60/(4230-3.6562*self.Twat-0.02585*self.Twat**2)
+    def InPort(self): #should be replaced by OutPort from model
+        return 0, 0, 0 #self.Zm, self.v, self.Tsol
+    def Update(self):
+        self.Zm, self.v, self.Tsol = self.InPort()
+        print('\n** Heat transfer parameters')
+        self.Twat=self.Twat_in                                       #current water temeprature
+        lamda_wat=0.55748+0.0021525*self.Twat-0.0000097*self.Twat**2 #W/m*K
+        visc_wat=1.53555258E-06*exp(-0.036*self.Twat)+2.52805091E-07 #m2/sec
+        Pr=self.Prandtl(self.Twat)
+        v_wat=self.Qwat/60000/self.Wat_sec #m/sec
+        Re=v_wat*self.deff/visc_wat
+        self.alfa_wat0=0.023*lamda_wat/self.deff*Re**0.8*Pr**0.4
+        self.set_level(self.Zm)
+        self.flux_thick_m=self.flux_lamda*((self.flux_Tmelt-self.Twat)/self.flux_alfa(self.Tsol)/self.v**0.8/(self.Tsol-self.flux_Tmelt)-self.Rm-1/self.alfa_watz)
+        if self.flux_thick_m<0.0: self.flux_thick_m=0.0
+        print('Prandtl: '+str(Pr))
+        print('Water speed, m/sec: '+str(v_wat))
+        print('Reynolds: '+str(Re))
+        print('Nominal HTC, kW/(m2K): '+str(self.alfa_wat0/1000))
+        print('Solid flux thickness at meniscus, mm: '+str(self.flux_thick_m*1000))
 class Usadka1D_slab:
-    #---------- casting parameters---------------------------
-    a=1.0/2  #half of slab width, m    
-    b=0.155  #depth of a calculation (half of slab thickness), m
-    v=0.95   #casting speed, m/min
-    dTemp=0  #temperature of overheating for liquid steel, K
-    Tsr=15   #ambient temperature, Celsius
-    Twat=30  #water temeprature
-    MouldLevel=0.1  #mould level,m
-    alfa_liq=10     #htc for liquid steel, W/m2K
-    Zones=[[0.9,200.0],[0.925,100]] #(start of zone, m; water flux, l/m2*min)
-    #---------- Output---------------------------
-    Z_list=[0.9,1.0,1.13,1.26,1.39,1.52]
+    def __init__(self,mould):
+        self.mould=mould
+        self.mould.InPort=self.OutPort
+        #---------- casting parameters---------------------------
+        self.a=1.0/2        #half of slab width, m    
+        self.b=0.155        #depth of a calculation (half of slab thickness), m
+        self.v=0.95         #casting speed, m/min
+        self.dTemp=0        #temperature of overheating for liquid steel, K
+        self.Tsr=15         #ambient temperature, Celsius
+        self.MouldLevel=0.1 #mould level,m
+        self.alfa_liq=0     #HTC between liquid and solid steel (if b = half of slab thickness then alfa_liq = 0)
+        self.Zones=[[mould.Height,200.0],[0.925,100]] #(start of zone, m; water flux, l/m2*min)
+        #---------- Output---------------------------
+        self.Z_list=[0.9,1.0,1.13,1.26,1.39,1.52]
+        self.Zm=0
     #-----------steel properties----------------------
     def CalcMaterialProp(self,C=0.0,Mn =0.0,Si=0.0,P=0.0,S=0.0,Al=0.0,Cu=0.0,Ni=0.0,Cr=0.0):
         #----------chemical compound of steel, %--------------------------
-        self.Tsol=1536-(200*C+16*Si+6*Mn+1.7*Cr+3.9*Ni+93*P+1100*S) #Solidus temperatere, Celsius
-        self.Tlik=1536-(78*C+7.5*Si+4.9*Mn+1.3*Cr+3.1*Ni+4.7*Cu+3.6*Al+34.4*P+38*S) #Liquidus temperature, Celsius
-        self.beta=(2.7-0.16*C+0.039*Mn-0.1*Si-0.019*Cr-0.016*Ni-0.5*P-0.25*S)/140000 #thermal expansion coeff, 1/K
+        self.Tsol=1536-(200*C+16*Si+6*Mn+1.7*Cr+3.9*Ni+93*P+1100*S)                  #Solidus temperatere, Celsius
+        self.Tlik=1536-(78*C+7.5*Si+4.9*Mn+1.3*Cr+3.1*Ni+4.7*Cu+3.6*Al+34.4*P+38*S)  #Liquidus temperature, Celsius
+        self.beta=(2.7-0.16*C+0.039*Mn-0.1*Si-0.019*Cr-0.016*Ni-0.5*P-0.25*S)/140000 #Thermal expansion coeff, 1/K
         self.lamda=29 #steel conductivity, W/m*K
         self.L=272E+3 #heat of solidification, J/kg
         self.ro=7200  #steel density, kg/m3 
@@ -77,13 +156,14 @@ class Usadka1D_slab:
             else: ksi0=ksi1
         return ksi0
     def HeatFlow(self,z,Ts):#W/m2
-        if z<=self.Zones[0][0]: return (2.1*self.v ** 0.21-1.12*(1-exp(-7*(z-self.MouldLevel)/self.v))+\
-0.11*2*self.a+0.00031*(self.Tlik+self.dTemp)-0.00594*self.Tlik+8.32402)*1000000 #mould 
+        if z<=self.Zones[0][0]:
+            return self.mould.HeatFlow(z,Ts) #mould 
         else:
             iz=0
             while iz<len(self.Zones)-1 and self.Zones[iz+1][0]<z:iz+=1
-            return 142/(5.5-z/30)*(Ts-self.Tsr)*self.Zones[iz][1]**0.55+\
-5.670367E-8*((Ts+273)**4-(self.Tsr+273)**4) #spray
+            return 142/(5.5-z/30)*(Ts-self.Tsr)*self.Zones[iz][1]**0.55+5.670367E-8*((Ts+273)**4-(self.Tsr+273)**4) #spray
+    def OutPort(self):
+        return self.MouldLevel, self.v, self.Tsol
     def RunCalc(self,n=300,kj=0.5,Epsilon=0.0001):
         # kj-convergence coefficient for thermal calculations
         self.n=n
@@ -109,11 +189,17 @@ class Usadka1D_slab:
         DeltaF1=0
         nF1=n
         Z=self.MouldLevel
+        self.mould.Update()
         j=0
         for i in range(0,n+1):
             self.T[0].append(T0)
             H[0].append(self.FuncTemp(T0))
         while out_i<len(self.Z_list):
+            if Z<=self.Zones[0][0]:
+                self.mould.set_level(Z)
+                if Z==self.mould.Zm:
+                    Flag=False #for check of start of solidification
+                    if self.T[j][n]>self.Tsol:Flag=True   
             Q.append(self.HeatFlow(Z,self.T[j][n]))
     #--------------thickness---------------------
             if (nk[j]<(n-2))and(nk[j]>2):
@@ -124,8 +210,8 @@ class Usadka1D_slab:
             for i in range(0,nF1):Tliqavg+=self.T[j][i]/nF1
     #--------------------------------------------        
             if self.Z_list[out_i]-dZ/2<=Z<self.Z_list[out_i]+dZ/2:
-                #Axis, m; Shrinkage, mm; Surface Temperature, Celcius; Heat Flux, MVt/m2; Solid thickness,mm; Liquid thickness, mm; Temprature in the middle, Celsius; HTC, Vt/m2K 
-                self.output.append((Z,deltaB,self.T[j][n],Q[j]/1000000,DeltaF0*1000,DeltaF1*1000,Tliqavg,Q[j]/(self.T[j][n]-self.Twat)))
+                #Axis, m; Shrinkage, mm; Surface Temperature, Celcius; Heat Flux, MVt/m2; Solid thickness,mm; Liquid thickness, mm; Temprature in the middle, Celsius; Water temp, Celsius 
+                self.output.append((Z,deltaB,self.T[j][n],Q[j]/1000000,DeltaF0*1000,DeltaF1*1000,Tliqavg,self.mould.Twat))
                 out_i+=1
             nk.append(n)
             nF1=n
@@ -151,5 +237,7 @@ class Usadka1D_slab:
 #                SigmaX=self.Ac*(abs(2*(self.beta*self.SpT[j][n]-ksi)) ** self.k)*exp(-(self.T[j][n]+273)/self.Tc)
             deltaB+=ksi*self.a*dtau*1000
     #------------------------------------------------
+            self.mould.HeatUp(Q[j]*dZ*2*self.a)
             Z+=dZ
+            if Flag: self.mould.Zm=Z
             j+=1
